@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Basic Plan",
+    "price": 50,
+    "employeeLimit": 5,
+    "features": ["5 GB Storage", "Email Support", "Basic Analytics"]
+  },
+  {
+    "name": "Pro Plan",
+    "price": 100,
+    "employeeLimit": 10,
+    "features": ["20 GB Storage", "Priority Email Support", "Advanced Analytics"]
+  },
+  {
+    "name": "Enterprise Plan",
+    "price": 200,
+    "employeeLimit": 25,
+    "features": ["100 GB Storage", "Dedicated Support", "Custom Reports"]
+  }
+]
