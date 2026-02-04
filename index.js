@@ -91,7 +91,7 @@ async function run() {
       const hr = {
         name,
         email,
-        password,           // plain text রাখা হলো
+        password,           
         role: "hr",
         companyName,
         companyLogo: companyLogo || "",
@@ -116,7 +116,7 @@ async function run() {
       const emp = {
         name,
         email,
-        password,           // plain text
+        password,           
         role: "employee",
         dateOfBirth,
         createdAt: new Date(),
@@ -170,6 +170,7 @@ async function run() {
 });
 
 
+
    app.get("/users/:email/role", verifyJWT, async (req, res) => {
   if (req.user.email !== req.params.email) {
     return res.status(403).json({ message: "Forbidden" });
@@ -187,26 +188,62 @@ async function run() {
     });
 
     // ─── Assets ──────────────────────────────────────────────
-    app.post("/assets", verifyJWT, verifyHR, async (req, res) => {
-      const { productName, productImage, productType, productQuantity } = req.body;
-      const hr = await userCollection.findOne({ _id: new ObjectId(req.user.id) });
-      if (!hr) return res.status(400).json({ message: "HR not found" });
+   // Add asset (HR only)
+app.post("/assets", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const {
+      productName,
+      productImage,
+      productType,
+      productQuantity,
+      hrEmail,
+      companyName,
+      companyLogo
+    } = req.body;
 
-      const asset = {
-        productName,
-        productImage,
-        productType,
-        productQuantity,
-        availableQuantity: productQuantity,
-        hrEmail: hr.email,
-        companyName: hr.companyName,
-        dateAdded: new Date(),
-      };
+    // Validate required fields
+    if (!productName || !productType || !productQuantity || !hrEmail || !companyName) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
 
-      const result = await assetsCollection.insertOne(asset);
-      res.status(201).json({ message: "Asset Created", assetId: result.insertedId });
+    // Ensure HR exists in DB
+    const hr = await userCollection.findOne({ email: hrEmail });
+    if (!hr || hr.role !== "hr") {
+      return res.status(403).json({ message: "HR not found or unauthorized" });
+    }
+
+    // Create asset object
+    const asset = {
+      productName,
+      productImage: productImage || "",
+      productType,
+      productQuantity: Number(productQuantity),
+      availableQuantity: Number(productQuantity),
+      hrEmail,
+      companyName,
+      companyLogo: companyLogo || "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await assetsCollection.insertOne(asset);
+
+    res.status(201).json({
+      message: "Asset created successfully",
+      assetId: result.insertedId,
+      asset,
     });
+  } catch (err) {
+    console.error("Add Asset Error:", err);
+    res.status(500).json({ message: "Failed to add asset" });
+  }
+});
 
+
+
+
+
+    //============================================
    app.get("/assets", verifyJWT, async (req, res) => {
   if (req.user.role === "hr") {
     const assets = await assetsCollection.find({ hrEmail: req.user.email }).toArray();
@@ -216,6 +253,7 @@ async function run() {
   const assets = await assetsCollection.find().toArray();
   res.json(assets);
 });
+
 
 
     app.get("/assets/public", async (req, res) => {
@@ -234,10 +272,46 @@ async function run() {
       res.json(result);
     });
 
-    app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
-      const result = await assetsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
-      res.json(result);
-    });
+  // Delete a request by ID (HR only)
+app.delete("/requests/:id", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    // Check if ID is valid ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid request ID" });
+    }
+
+    const result = await requestsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Request not found or already deleted" });
+    }
+
+    res.json({ message: "Request deleted successfully" });
+  } catch (err) {
+    console.error("Delete request error:", err);
+    res.status(500).json({ message: "Failed to delete request" });
+  }
+});
+
+app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid asset ID" });
+
+    const result = await assetsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Asset not found or already deleted" });
+    }
+
+    res.json({ message: "Asset deleted successfully", deletedCount: result.deletedCount });
+  } catch (err) {
+    console.error("Delete asset error:", err);
+    res.status(500).json({ message: "Failed to delete asset" });
+  }
+});
 
     // ─── Requests ────────────────────────────────────────────
     app.post("/requests", verifyJWT, async (req, res) => {
