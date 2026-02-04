@@ -186,6 +186,16 @@ async function run() {
       const packages = await packagesCollection.find().toArray();
       res.json(packages);
     });
+    // seed package route 
+    app.get("/packages/hr", async (req, res) => {
+  try {
+    const packages = await packagesCollection.find().toArray();
+    res.json(packages);
+  } catch (err) {
+    console.error("Get HR packages error:", err);
+    res.status(500).json({ message: "Failed to fetch packages" });
+  }
+});
 
     // ─── Assets ──────────────────────────────────────────────
    // Add asset (HR only)
