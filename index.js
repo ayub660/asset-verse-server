@@ -248,6 +248,98 @@ app.post("/assets", verifyJWT, verifyHR, async (req, res) => {
     res.status(500).json({ message: "Failed to add asset" });
   }
 });
+//+========MY emplioyye Route===========
+// ─── Get Approved Employees for HR ─────────────────────
+app.get("/employees", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const hrEmail = req.user.email;
+
+    const employees = await userCollection.find({
+      role: "employee",
+      hrEmail: hrEmail,
+      status: "approved",
+    }).toArray();
+
+    res.json(employees);
+  } catch (error) {
+    console.error("Get employees error:", error);
+    res.status(500).json({ message: "Failed to load employees" });
+  }
+});
+
+// ─── Remove Employee (HR) ──────────────────────────────
+app.delete("/employees/:id", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid employee ID" });
+    }
+
+    const result = await userCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+        role: "employee",
+        hrEmail: req.user.email,
+      },
+      {
+        $set: { status: "removed", updatedAt: new Date() },
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Remove employee error:", error);
+    res.status(500).json({ message: "Failed to remove employee" });
+  }
+});
+
+// ─── Approve Employee Request ──────────────────────────
+app.post("/employee-requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const request = await requestsCollection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    // ✅ UPDATE EMPLOYEE USER DOCUMENT
+    await userCollection.updateOne(
+      { email: request.requesterEmail },
+      {
+        $set: {
+          status: "approved",
+          hrEmail: req.user.email,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // mark request approved
+    await requestsCollection.updateOne(
+      { _id: request._id },
+      {
+        $set: {
+          requestStatus: "approved",
+          approvedAt: new Date(),
+          approvedBy: req.user.email,
+        },
+      }
+    );
+
+    res.json({ success: true, message: "Employee approved" });
+  } catch (err) {
+    console.error("Approve employee error:", err);
+    res.status(500).json({ message: "Failed to approve employee" });
+  }
+});
+///^^^^^^ MOngo Ck kore Employee list ante hobe //
 
 
 
