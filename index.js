@@ -12,7 +12,7 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://asset-verse-clients.netlify.app"
+    
   ],
   credentials: true,
 }));
@@ -513,7 +513,7 @@ app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
       res.json({ url: session.url });
     });
 
-    app.post("/payment-success", async (req, res) => {
+    app.patch("/payment-success", async (req, res) => {
       const { sessionId } = req.body;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       if (session.payment_status !== "paid") return res.status(400).json({ message: "Payment not completed" });
