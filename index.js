@@ -494,7 +494,7 @@ app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
       const pkg = await packagesCollection.findOne({ _id: new ObjectId(packageId) });
       if (!pkg) return res.status(404).json({ message: "Package not found" });
 
-      const session = await stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [{
