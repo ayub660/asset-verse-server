@@ -12,6 +12,7 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     "http://localhost:5173",
+     process.env.SITE_DOMAIN,
     
   ],
   credentials: true,
@@ -21,9 +22,13 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@assetverse.wvltwxx.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri);
 
+
+// ata route theke enechi 
+app.get("/", (req, res) => res.send("AssetVerse Server Running..."));
+
 async function run() {
   try {
-    await client.connect();
+    
     console.log("✅ MongoDB Connected");
 
     const db = client.db("assetverse");
@@ -37,16 +42,16 @@ async function run() {
     const paymentsCollection = db.collection("payments");
 
     // ─── Default Packages Seed ───────────────────────────────
-    const packageCount = await packagesCollection.countDocuments();
-    if (packageCount === 0) {
-      const defaultPackages = [
-        { name: "Basic", price: 5, employeeLimit: 5, features: ["5 Employees", "Basic Tracking"], createdAt: new Date() },
-        { name: "Pro",   price: 10, employeeLimit: 10, features: ["10 Employees", "Priority Support"], createdAt: new Date() },
-        { name: "Enterprise", price: 15, employeeLimit: 15, features: ["15 Employees", "Full Access"], createdAt: new Date() },
-      ];
-      await packagesCollection.insertMany(defaultPackages);
-      console.log("✅ Default packages inserted");
-    }
+    // const packageCount = await packagesCollection.countDocuments();
+    // if (packageCount === 0) {
+    //   const defaultPackages = [
+    //     { name: "Basic", price: 5, employeeLimit: 5, features: ["5 Employees", "Basic Tracking"], createdAt: new Date() },
+    //     { name: "Pro",   price: 10, employeeLimit: 10, features: ["10 Employees", "Priority Support"], createdAt: new Date() },
+    //     { name: "Enterprise", price: 15, employeeLimit: 15, features: ["15 Employees", "Full Access"], createdAt: new Date() },
+    //   ];
+    //   await packagesCollection.insertMany(defaultPackages);
+    //   console.log("✅ Default packages inserted");
+    // }
 
     // ─── JWT Middlewares ─────────────────────────────────────
     const verifyJWT = (req, res, next) => {
@@ -69,7 +74,7 @@ async function run() {
 
     // ─── Routes ──────────────────────────────────────────────
 
-    app.get("/", (req, res) => res.send("AssetVerse Server Running..."));
+    // app.get("/", (req, res) => res.send("AssetVerse Server Running..."));
 
     // ─── Auth / Users ────────────────────────────────────────
     app.post("/users", async (req, res) => {
