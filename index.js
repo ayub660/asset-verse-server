@@ -508,29 +508,101 @@ app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
       res.json(requests);
     });
 
-    app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
-      const request = await requestsCollection.findOne({ _id: new ObjectId(req.params.id) });
-      if (!request || request.requestStatus !== "pending") return res.status(400).json({ message: "Invalid request" });
+    // Id approve reject delete Route
+// ১. Approve Request (POST)
+// এই রুটে রিকোয়েস্ট স্ট্যাটাস আপডেট হবে এবং অ্যাসেটের স্টক ১ কমবে
 
-      const asset = await assetsCollection.findOne({ _id: request.assetId });
-      if (!asset || asset.availableQuantity <= 0) return res.status(400).json({ message: "No stock" });
+app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const requestId = req.params.id;
 
-      await assignedCollection.insertOne({
-        ...request,
-        employeeEmail: request.requesterEmail,
-        employeeName: request.requesterName,
-        assignmentDate: new Date(),
-        status: "assigned"
-      });
+    // ১. রিকোয়েস্টটি ডাটাবেজ থেকে খুঁজে বের করুন
+    const request = await requestsCollection.findOne({ _id: new ObjectId(requestId) });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
 
-      await assetsCollection.updateOne({ _id: asset._id }, { $inc: { availableQuantity: -1 } });
-      await requestsCollection.updateOne(
-        { _id: request._id },
-        { $set: { requestStatus: "approved", approvalDate: new Date(), processedBy: req.user.email } }
-      );
+    // ২. অ্যাসেটটি খুঁজুন (String বা ObjectId উভয়ই চেক করবে)
+    let assetQuery;
+    try {
+      assetQuery = { _id: new ObjectId(request.assetId) };
+    } catch (e) {
+      assetQuery = { _id: request.assetId };
+    }
 
-      res.json({ message: "Approved" });
-    });
+    const asset = await assetsCollection.findOne(assetQuery);
+
+    if (!asset) {
+      return res.status(404).json({ message: "Asset not found in database!" });
+    }
+
+    // ৩. স্টক চেক করুন
+    if (asset.productQuantity <= 0) {
+      return res.status(400).json({ message: "Stock is empty (0). Cannot approve." });
+    }
+
+    // ৪. অ্যাসেটের স্টক ১ কমিয়ে দিন
+    await assetsCollection.updateOne(
+      { _id: asset._id },
+      { $inc: { productQuantity: -1 } }
+    );
+
+    // ৫. রিকোয়েস্ট স্ট্যাটাস 'approved' করে দিন
+    const result = await requestsCollection.updateOne(
+      { _id: new ObjectId(requestId) },
+      {
+        $set: {
+          requestStatus: "approved",
+          approvalDate: new Date(),
+          processedBy: req.user.email,
+        }
+      }
+    );
+
+    res.json({ success: true, message: "Asset request approved successfully" });
+
+  } catch (error) {
+    console.error("Approve Route Error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// ২. Reject Request (PATCH)
+app.patch("/requests/:id/reject", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await requestsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          requestStatus: "rejected",
+          rejectDate: new Date(),
+        },
+      }
+    );
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Error rejecting request" });
+  }
+});
+
+// ৩. Delete Request (DELETE)
+app.delete("/requests/:id", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await requestsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Error deleting request" });
+  }
+});
+
+// ৪. Get All HR Requests (GET) - আপনার ফ্রন্টএন্ড এটি কল করছে
+app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
+    // এখানে hrEmail দিয়ে ফিল্টার করা হচ্ছে যাতে একজন HR শুধু তার কোম্পানির রিকোয়েস্ট দেখে
+    const result = await requestsCollection.find({ hrEmail: req.user.email }).toArray();
+    res.send(result);
+});
 
     app.patch("/requests/:id/reject", verifyJWT, verifyHR, async (req, res) => {
       await requestsCollection.updateOne(
