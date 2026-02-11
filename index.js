@@ -180,6 +180,33 @@ async function run() {
   if (req.user.email !== req.params.email) {
     return res.status(403).json({ message: "Forbidden" });
   }
+// Update profile Info
+
+app.patch("/users/:email", verifyJWT, async (req, res) => {
+  const email = req.params.email;
+  const { name, dateOfBirth, photo, companyLogo } = req.body;
+
+  if (req.user.email !== email) {
+    return res.status(403).send({ message: "Forbidden Access" });
+  }
+
+  const query = { email: email };
+  const updateData = {
+    $set: {
+      name: name,
+      dateOfBirth: dateOfBirth,
+      updatedAt: new Date(),
+    },
+  };
+
+  // যদি HR হয় তবে লোগো আপডেট হবে, এমপ্লয়ি হলে ফটো
+  if (photo) updateData.$set.photo = photo;
+  if (companyLogo) updateData.$set.companyLogo = companyLogo;
+
+  const result = await userCollection.updateOne(query, updateData);
+  res.send(result);
+});
+ 
 
   const user = await userCollection.findOne({ email: req.params.email });
   res.json({ role: user?.role || "employee" });
@@ -302,6 +329,7 @@ app.delete("/employees/:id", verifyJWT, verifyHR, async (req, res) => {
     res.status(500).json({ message: "Failed to remove employee" });
   }
 });
+
 
 // ─── Approve Employee Request ──────────────────────────
 app.post("/employee-requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
