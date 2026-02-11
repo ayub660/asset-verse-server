@@ -182,13 +182,20 @@ async function run() {
   }
   // My team  Route
   
-app.get("/team/:email", async (req, res) => {
+
+app.get("/team/:email", verifyJWT, async (req, res) => {
   const email = req.params.email;
   const user = await userCollection.findOne({ email });
-  if (!user || !user.hr_email) return res.send([]); // যদি HR এর সাথে যুক্ত না থাকে
 
-  const team = await userCollection.find({ hr_email: user.hr_email }).toArray();
-  res.send(team);
+  console.log("Found User:", user);
+  if (!user || !user.companyName) {
+    return res.send([]);
+  }
+
+ 
+  const query = { companyName: user.companyName };
+  const teamMembers = await userCollection.find(query).toArray();
+  res.send(teamMembers);
 });
 // Update profile Info
 
@@ -391,7 +398,9 @@ app.post("/employee-requests/:id/approve", verifyJWT, verifyHR, async (req, res)
     //============================================
    app.get("/assets", verifyJWT, async (req, res) => {
   if (req.user.role === "hr") {
-    const assets = await assetsCollection.find({ hrEmail: req.user.email }).toArray();
+    const assets = await assetsCollection.find({ hrEmail: req.user.email })
+    .sort({createdAt: -1}) 
+    .toArray();
     return res.json(assets);
   }
 
