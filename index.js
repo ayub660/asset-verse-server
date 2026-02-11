@@ -180,6 +180,16 @@ async function run() {
   if (req.user.email !== req.params.email) {
     return res.status(403).json({ message: "Forbidden" });
   }
+  // My team  Route
+  
+app.get("/team/:email", async (req, res) => {
+  const email = req.params.email;
+  const user = await userCollection.findOne({ email });
+  if (!user || !user.hr_email) return res.send([]); // যদি HR এর সাথে যুক্ত না থাকে
+
+  const team = await userCollection.find({ hr_email: user.hr_email }).toArray();
+  res.send(team);
+});
 // Update profile Info
 
 app.patch("/users/:email", verifyJWT, async (req, res) => {
