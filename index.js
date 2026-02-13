@@ -59,7 +59,10 @@ async function run() {
       if (!token) return res.status(401).json({ message: "No token provided" });
 
       jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) return res.status(403).json({ message: "Invalid/expired token" });
+        if (err) {
+          // console.log("JWT Error", err.message);
+          return res.status(403).json({ message: "Invalid/expired token" });
+        }
         req.user = decoded;
         next();
       });
@@ -348,47 +351,7 @@ app.delete("/employees/:id", verifyJWT, verifyHR, async (req, res) => {
 });
 
 
-// ─── Approve Employee Request ──────────────────────────
-app.post("/employee-requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
-  try {
-    const request = await requestsCollection.findOne({
-      _id: new ObjectId(req.params.id),
-    });
-
-    if (!request) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    // ✅ UPDATE EMPLOYEE USER DOCUMENT
-    await userCollection.updateOne(
-      { email: request.requesterEmail },
-      {
-        $set: {
-          status: "approved",
-          hrEmail: req.user.email,
-          updatedAt: new Date(),
-        },
-      }
-    );
-
-    // mark request approved
-    await requestsCollection.updateOne(
-      { _id: request._id },
-      {
-        $set: {
-          requestStatus: "approved",
-          approvedAt: new Date(),
-          approvedBy: req.user.email,
-        },
-      }
-    );
-
-    res.json({ success: true, message: "Employee approved" });
-  } catch (err) {
-    console.error("Approve employee error:", err);
-    res.status(500).json({ message: "Failed to approve employee" });
-  }
-});
+ 
 ///^^^^^^ MOngo Ck kore Employee list ante hobe //
 
 
@@ -426,28 +389,7 @@ app.post("/employee-requests/:id/approve", verifyJWT, verifyHR, async (req, res)
       res.json(result);
     });
 
-  // Delete a request by ID (HR only)
-app.delete("/requests/:id", verifyJWT, verifyHR, async (req, res) => {
-  try {
-    const id = req.params.id;
-
-    // Check if ID is valid ObjectId
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid request ID" });
-    }
-
-    const result = await requestsCollection.deleteOne({ _id: new ObjectId(id) });
-
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ message: "Request not found or already deleted" });
-    }
-
-    res.json({ message: "Request deleted successfully" });
-  } catch (err) {
-    console.error("Delete request error:", err);
-    res.status(500).json({ message: "Failed to delete request" });
-  }
-});
+  
 
 app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
   try {
@@ -516,20 +458,19 @@ app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
   try {
     const requestId = req.params.id;
 
-    // ১. রিকোয়েস্টটি ডাটাবেজ থেকে খুঁজে বের করুন
+    // ১. রিকোয়েস্টটি খুঁজে বের করুন
     const request = await requestsCollection.findOne({ _id: new ObjectId(requestId) });
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
     }
 
-    // ২. অ্যাসেটটি খুঁজুন (String বা ObjectId উভয়ই চেক করবে)
+    // ২. অ্যাসেটটি খুঁজুন
     let assetQuery;
     try {
       assetQuery = { _id: new ObjectId(request.assetId) };
     } catch (e) {
       assetQuery = { _id: request.assetId };
     }
-
     const asset = await assetsCollection.findOne(assetQuery);
 
     if (!asset) {
@@ -541,14 +482,32 @@ app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
       return res.status(400).json({ message: "Stock is empty (0). Cannot approve." });
     }
 
-    // ৪. অ্যাসেটের স্টক ১ কমিয়ে দিন
+    // ৪. HR-এর নিজের প্রোফাইল থেকে কোম্পানির নাম নিন 
+    // (কারণ এমপ্লয়ীকে এই কোম্পানির মেম্বার বানাতে হবে)
+    const hrProfile = await userCollection.findOne({ email: req.user.email });
+
+    // ৫. অ্যাসেটের স্টক ১ কমিয়ে দিন
     await assetsCollection.updateOne(
       { _id: asset._id },
       { $inc: { productQuantity: -1 } }
     );
 
-    // ৫. রিকোয়েস্ট স্ট্যাটাস 'approved' করে দিন
-    const result = await requestsCollection.updateOne(
+    // ✅ ৬. মেইন ফিক্স: এমপ্লয়ীর ইউজার প্রোফাইল আপডেট করা
+    // যাতে সে 'My Team' পেজে মেম্বারদের দেখতে পায়
+    await userCollection.updateOne(
+      { email: request.requesterEmail },
+      {
+        $set: {
+          companyName: hrProfile?.companyName, // HR-এর কোম্পানি নাম এখানে সেট হবে
+          hrEmail: req.user.email,
+          status: "approved",
+          updatedAt: new Date(),
+        }
+      }
+    );
+
+    // ৭. রিকোয়েস্ট স্ট্যাটাস 'approved' করে দিন
+    await requestsCollection.updateOne(
       { _id: new ObjectId(requestId) },
       {
         $set: {
@@ -559,7 +518,7 @@ app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
       }
     );
 
-    res.json({ success: true, message: "Asset request approved successfully" });
+    res.json({ success: true, message: "Asset approved and Employee joined the team!" });
 
   } catch (error) {
     console.error("Approve Route Error:", error);
@@ -586,20 +545,39 @@ app.patch("/requests/:id/reject", verifyJWT, verifyHR, async (req, res) => {
   }
 });
 
-// ৩. Delete Request (DELETE)
-app.delete("/requests/:id", verifyJWT, verifyHR, async (req, res) => {
+// 3. Delete Request (DELETE)
+app.delete("/requests/:id", verifyJWT, async (req, res) => {
   try {
     const id = req.params.id;
-    const result = await requestsCollection.deleteOne({ _id: new ObjectId(id) });
+    const query = { _id: new ObjectId(id) };
+    const request = await requestsCollection.findOne(query);
+
+    if (!request) {
+      return res.status(404).send({ message: "Request not found" });
+    }
+
+
+    // Database-er email key-ti niche bhabe check hobe
+    const dbEmail = request.requesterEmail || request.email || request.userEmail;
+
+    if (dbEmail?.toLowerCase() !== req.user.email?.toLowerCase()) {
+      return res.status(403).send({ 
+        message: `Forbidden: DB Email (${dbEmail}) and Token Email (${req.user.email}) mismatch!` 
+      });
+    }
+
+    const result = await requestsCollection.deleteOne(query);
     res.send(result);
   } catch (error) {
-    res.status(500).send({ message: "Error deleting request" });
+    console.error("Delete Error:", error);
+    res.status(500).send({ message: "Internal server error" });
   }
 });
 
-// ৪. Get All HR Requests (GET) - আপনার ফ্রন্টএন্ড এটি কল করছে
+
+// ৪. Get All HR Requests (GET) 
 app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
-    // এখানে hrEmail দিয়ে ফিল্টার করা হচ্ছে যাতে একজন HR শুধু তার কোম্পানির রিকোয়েস্ট দেখে
+    
     const result = await requestsCollection.find({ hrEmail: req.user.email }).toArray();
     res.send(result);
 });
