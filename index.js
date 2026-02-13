@@ -164,6 +164,22 @@ async function run() {
   res.json({ token });
 });
 
+app.get("/check-hr/:email", async (req, res) => {
+    const email = req.params.email;
+    const user = await userCollection.findOne({ email: email });
+    
+    if (user) {
+        res.json({
+            email: user.email,
+            role: user.role,
+            packageLimit: user.packageLimit,
+            currentEmployees: user.currentEmployees,
+            fullData: user // all object dekhar jonno
+        });
+    } else {
+        res.status(404).json({ message: "User not found" });
+    }
+});
 
    app.get("/users/:email", verifyJWT, async (req, res) => {
   if (req.user.email !== req.params.email) {
@@ -247,6 +263,25 @@ app.patch("/users/:email", verifyJWT, async (req, res) => {
     console.error("Get HR packages error:", err);
     res.status(500).json({ message: "Failed to fetch packages" });
   }
+});
+
+
+app.patch("/users/upgrade-package", verifyJWT, verifyHR, async (req, res) => {
+  const { newLimit, packageName } = req.body;
+  const email = req.user.email;
+
+  const result = await userCollection.updateOne(
+    { email: email },
+    { 
+      $set: { 
+        packageLimit: Number(newLimit), 
+        packageName: packageName,
+        updatedAt: new Date() 
+      } 
+    }
+  );
+
+  res.send(result);
 });
 
     // ─── Assets ──────────────────────────────────────────────
@@ -452,81 +487,83 @@ app.delete("/assets/:id", verifyJWT, verifyHR, async (req, res) => {
 
     // Id approve reject delete Route
 // ১. Approve Request (POST)
-// এই রুটে রিকোয়েস্ট স্ট্যাটাস আপডেট হবে এবং অ্যাসেটের স্টক ১ কমবে
+
 
 app.post("/requests/:id/approve", verifyJWT, verifyHR, async (req, res) => {
   try {
     const requestId = req.params.id;
+    const hrEmail = req.user.email;
 
-    // ১. রিকোয়েস্টটি খুঁজে বের করুন
+    // ১. hr profile alimit check
+    const hrProfile = await userCollection.findOne({ email: hrEmail });
+    if (!hrProfile) {
+      return res.status(404).json({ message: "HR profile not found" });
+    }
+
+    // ✅ Limit check
+    const currentEmployees = hrProfile.currentEmployees || 0;
+    const limit = hrProfile.packageLimit || 0;
+
+    if (currentEmployees >= limit) {
+      return res.status(400).json({ 
+        message: `Your Employee Limit (${limit})has been reached! please upgrade your package` 
+      });
+    }
+
     const request = await requestsCollection.findOne({ _id: new ObjectId(requestId) });
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
     }
-
-    // ২. অ্যাসেটটি খুঁজুন
-    let assetQuery;
-    try {
-      assetQuery = { _id: new ObjectId(request.assetId) };
-    } catch (e) {
-      assetQuery = { _id: request.assetId };
-    }
-    const asset = await assetsCollection.findOne(assetQuery);
-
+  const asset = await assetsCollection.findOne({ _id: new ObjectId(request.assetId) });
     if (!asset) {
-      return res.status(404).json({ message: "Asset not found in database!" });
+      return res.status(404).json({ message: "Asset not found!" });
     }
 
-    // ৩. স্টক চেক করুন
     if (asset.productQuantity <= 0) {
-      return res.status(400).json({ message: "Stock is empty (0). Cannot approve." });
+      return res.status(400).json
+      ({ message: "This asset is out of stock and cannot be approved."
+
+       });
     }
 
-    // ৪. HR-এর নিজের প্রোফাইল থেকে কোম্পানির নাম নিন 
-    // (কারণ এমপ্লয়ীকে এই কোম্পানির মেম্বার বানাতে হবে)
-    const hrProfile = await userCollection.findOne({ email: req.user.email });
-
-    // ৫. অ্যাসেটের স্টক ১ কমিয়ে দিন
-    await assetsCollection.updateOne(
+ await assetsCollection.updateOne(
       { _id: asset._id },
       { $inc: { productQuantity: -1 } }
     );
 
-    // ✅ ৬. মেইন ফিক্স: এমপ্লয়ীর ইউজার প্রোফাইল আপডেট করা
-    // যাতে সে 'My Team' পেজে মেম্বারদের দেখতে পায়
     await userCollection.updateOne(
       { email: request.requesterEmail },
       {
         $set: {
-          companyName: hrProfile?.companyName, // HR-এর কোম্পানি নাম এখানে সেট হবে
-          hrEmail: req.user.email,
+          companyName: hrProfile.companyName,
+          hrEmail: hrEmail,
           status: "approved",
           updatedAt: new Date(),
         }
       }
     );
-
-    // ৭. রিকোয়েস্ট স্ট্যাটাস 'approved' করে দিন
-    await requestsCollection.updateOne(
+     await userCollection.updateOne(
+      { email: hrEmail },
+      { $inc: { currentEmployees: 1 } }
+    );
+  const result = await requestsCollection.updateOne(
       { _id: new ObjectId(requestId) },
       {
         $set: {
           requestStatus: "approved",
           approvalDate: new Date(),
-          processedBy: req.user.email,
+          processedBy: hrEmail,
         }
       }
     );
-
-    res.json({ success: true, message: "Asset approved and Employee joined the team!" });
+  res.json({ success: true, message: "Asset Request approved successfully!" });
 
   } catch (error) {
-    console.error("Approve Route Error:", error);
+    console.error("Approve Error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// ২. Reject Request (PATCH)
+// 2. Reject Request (PATCH)
 app.patch("/requests/:id/reject", verifyJWT, verifyHR, async (req, res) => {
   try {
     const id = req.params.id;
@@ -555,14 +592,11 @@ app.delete("/requests/:id", verifyJWT, async (req, res) => {
     if (!request) {
       return res.status(404).send({ message: "Request not found" });
     }
-
-
-    // Database-er email key-ti niche bhabe check hobe
-    const dbEmail = request.requesterEmail || request.email || request.userEmail;
-
-    if (dbEmail?.toLowerCase() !== req.user.email?.toLowerCase()) {
+    const isOwner = request.requesterEmail?.toLowerCase() === req.user.email?.toLowerCase();
+    const isHR = request.hrEmail?.toLowerCase() === req.user.email?.toLowerCase();
+     if (!isOwner && !isHR) {
       return res.status(403).send({ 
-        message: `Forbidden: DB Email (${dbEmail}) and Token Email (${req.user.email}) mismatch!` 
+        message: "Forbidden: You do not have permission to delete this request." 
       });
     }
 
