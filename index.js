@@ -147,14 +147,26 @@ async function run() {
       res.json({ message: "Login Success", token });
     });
 
-    app.post("/jwt", async (req, res) => {
-  const { email } = req.body;
-  const user = await userCollection.findOne({ email });
+   app.post("/jwt", async (req, res) => {
+  const { email, name, image, role } = req.body; 
+  
+  
+  let user = await userCollection.findOne({ email });
 
+  
   if (!user) {
-    return res.status(404).json({ message: "User not found in DB" });
+    const newUser = {
+      email,
+      name,
+      image,
+      role: role || "employee", 
+      
+    };
+    const result = await userCollection.insertOne(newUser);
+    user = { ...newUser, _id: result.insertedId };
   }
 
+  
   const token = jwt.sign(
     { id: user._id, email: user.email, role: user.role },
     process.env.ACCESS_TOKEN_SECRET,
@@ -163,7 +175,6 @@ async function run() {
 
   res.json({ token });
 });
-
 app.get("/check-hr/:email", async (req, res) => {
     const email = req.params.email;
     const user = await userCollection.findOne({ email: email });
@@ -680,19 +691,19 @@ app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
   try {
     const hrEmail = req.user.email;
 
-    // ১. মোট কর্মচারী
+    // total employee
     const totalEmployees = await userCollection.countDocuments({ hrEmail: hrEmail, role: "employee" });
 
-    // ২. মোট অ্যাসেট
+    // total asset 
     const totalAssets = await assetsCollection.countDocuments({ hrEmail: hrEmail });
 
-    // ৩. পেন্ডিং রিকোয়েস্ট
+    // Pending request
     const pendingRequests = await requestsCollection.countDocuments({ 
       hrEmail: hrEmail, 
       requestStatus: "pending" 
     });
 
-    // ৪. পাই চার্টের ডাটা (Returnable vs Non-returnable)
+    //  (Returnable vs Non-returnable)
     const assetTypeStats = await assetsCollection.aggregate([
       { $match: { hrEmail: hrEmail } },
       { $group: { _id: "$productType", count: { $sum: 1 } } }
@@ -703,12 +714,12 @@ app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
       value: item.count
     }));
 
-    // ৫. **টপ রিকোয়েস্টেড অ্যাসেট চার্টের ডাটা** (নতুন যোগ করা হয়েছে)
+    
     const topRequests = await requestsCollection.aggregate([
       { $match: { hrEmail: hrEmail } },
-      { $group: { _id: "$assetName", count: { $sum: 1 } } }, // অ্যাসেট নাম অনুযায়ী গ্রুপ করা
-      { $sort: { count: -1 } }, // সবচেয়ে বেশি রিকোয়েস্ট উপরে রাখা
-      { $limit: 4 } // টপ ৪টি দেখানো
+      { $group: { _id: "$assetName", count: { $sum: 1 } } }, 
+      { $sort: { count: -1 } }, 
+      { $limit: 4 } 
     ]).toArray();
 
     const topChartData = topRequests.map(item => ({
@@ -722,13 +733,13 @@ app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
       productQuantity: { $lt: 10 } 
     }).limit(5).toArray();
 
-    // সব ডাটা একসাথে পাঠানো
+    
     res.send({
       employees: totalEmployees,
       assets: totalAssets,
       requests: pendingRequests,
       chartData,
-      topChartData, // নতুন ডাটা
+      topChartData, 
       limitedStock
     });
 
