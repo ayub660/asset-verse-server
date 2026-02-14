@@ -400,11 +400,13 @@ app.delete("/employees/:id", verifyJWT, verifyHR, async (req, res) => {
     .sort({createdAt: -1}) 
     .toArray();
     return res.json(assets);
+   
   }
 
   const assets = await assetsCollection.find().toArray();
   res.json(assets);
 });
+
 
 
 
@@ -673,6 +675,96 @@ app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
 
       res.json({ success: true });
     });
+
+  app.get("/hr/stats", verifyJWT, verifyHR, async (req, res) => {
+  try {
+    const hrEmail = req.user.email;
+
+    // ১. মোট কর্মচারী
+    const totalEmployees = await userCollection.countDocuments({ hrEmail: hrEmail, role: "employee" });
+
+    // ২. মোট অ্যাসেট
+    const totalAssets = await assetsCollection.countDocuments({ hrEmail: hrEmail });
+
+    // ৩. পেন্ডিং রিকোয়েস্ট
+    const pendingRequests = await requestsCollection.countDocuments({ 
+      hrEmail: hrEmail, 
+      requestStatus: "pending" 
+    });
+
+    // ৪. পাই চার্টের ডাটা (Returnable vs Non-returnable)
+    const assetTypeStats = await assetsCollection.aggregate([
+      { $match: { hrEmail: hrEmail } },
+      { $group: { _id: "$productType", count: { $sum: 1 } } }
+    ]).toArray();
+
+    const chartData = assetTypeStats.map(item => ({
+      name: item._id || "Other",
+      value: item.count
+    }));
+
+    // ৫. **টপ রিকোয়েস্টেড অ্যাসেট চার্টের ডাটা** (নতুন যোগ করা হয়েছে)
+    const topRequests = await requestsCollection.aggregate([
+      { $match: { hrEmail: hrEmail } },
+      { $group: { _id: "$assetName", count: { $sum: 1 } } }, // অ্যাসেট নাম অনুযায়ী গ্রুপ করা
+      { $sort: { count: -1 } }, // সবচেয়ে বেশি রিকোয়েস্ট উপরে রাখা
+      { $limit: 4 } // টপ ৪টি দেখানো
+    ]).toArray();
+
+    const topChartData = topRequests.map(item => ({
+      name: item._id,
+      count: item.count
+    }));
+
+    // ৬. Limited Stock
+    const limitedStock = await assetsCollection.find({ 
+      hrEmail, 
+      productQuantity: { $lt: 10 } 
+    }).limit(5).toArray();
+
+    // সব ডাটা একসাথে পাঠানো
+    res.send({
+      employees: totalEmployees,
+      assets: totalAssets,
+      requests: pendingRequests,
+      chartData,
+      topChartData, // নতুন ডাটা
+      limitedStock
+    });
+
+  } catch (error) {
+    console.error("Stats Error:", error);
+    res.status(500).send({ message: "Error fetching stats" });
+  }
+});
+
+    // Analytics: Asset Type Distribution for HR
+app.get("/analytics/asset-types", verifyJWT, async (req, res) => {
+  try {
+    const hrEmail = req.user.email;
+
+    const result = await assetsCollection.aggregate([
+      { $match: { hrEmail: hrEmail } }, 
+      {
+        $group: {
+          _id: "$productType", 
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    // Recharts
+    const chartData = result.map(item => ({
+      name: item._id || "Other", // 'Returnable'
+      value: item.count 
+    }));
+
+    res.send(chartData);
+  } catch (error) {
+    console.error("Analytics Error:", error);
+    res.status(500).send({ message: "Internal server error" });
+  }
+});
 
     // ─── Server Started Message ──────────────────────────────
     console.log("All routes loaded inside run()");
