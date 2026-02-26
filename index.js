@@ -12,7 +12,9 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     "http://localhost:5173",
-     process.env.SITE_DOMAIN,
+    process.env.SITE_DOMAIN,
+    // "https://asset-verse-clients.netlify.app",
+     
     
   ],
   credentials: true,
@@ -774,6 +776,25 @@ app.get("/analytics/asset-types", verifyJWT, async (req, res) => {
   } catch (error) {
     console.error("Analytics Error:", error);
     res.status(500).send({ message: "Internal server error" });
+  }
+});
+
+app.get('/public-stats', async (req, res) => {
+  try {
+    
+    const totalAssets = await assetsCollection.countDocuments();
+    const totalUsers = await userCollection.countDocuments();
+     const totalCompanies = await userCollection.countDocuments({ role: "hr" });
+ 
+
+    res.send({ 
+      totalAssets, 
+      totalUsers, 
+      totalCompanies 
+    });
+  } catch (error) {
+    console.error("Stats API Error:", error);
+    res.status(500).send({ message: "Error fetching stats" });
   }
 });
 
