@@ -280,23 +280,42 @@ app.patch("/users/:email", verifyJWT, async (req, res) => {
 });
 
 
-app.patch("/users/upgrade-package", verifyJWT, verifyHR, async (req, res) => {
-  const { newLimit, packageName } = req.body;
-  const email = req.user.email;
+// app.patch("/users/upgrade-package", verifyJWT, verifyHR, async (req, res) => {
+//   try {
+//     const { newLimit, packageName } = req.body;
+//     const email = req.user.email;
 
-  const result = await userCollection.updateOne(
-    { email: email },
-    { 
-      $set: { 
-        packageLimit: Number(newLimit), 
-        packageName: packageName,
-        updatedAt: new Date() 
-      } 
-    }
-  );
+//     // --- DEBUGGING START ---
+//     const user = await userCollection.findOne({ email });
+    
+//     console.log("--- UPGRADE DEBUG ---");
+//     console.log("Current DB Limit:", user.packageLimit, "Type:", typeof user.packageLimit);
+//     console.log("Incoming New Limit:", newLimit, "Type:", typeof newLimit);
+//     // --- DEBUGGING END ---
 
-  res.send(result);
-});
+//     // ডাটাবেস আপডেট লজিক (নিরাপদ উপায়)
+//     const currentLimit = Number(user.packageLimit) || 0;
+//     const addedLimit = Number(newLimit) || 0;
+//     const updatedTotal = currentLimit + addedLimit;
+
+//     console.log("Calculated Total:", updatedTotal);
+
+//     const result = await userCollection.updateOne(
+//       { email },
+//       {
+//         $set: {
+//           packageLimit: updatedTotal, // সরাসরি যোগ করা ভ্যালু সেট করুন
+//           packageName,
+//           updatedAt: new Date(),
+//         },
+//       }
+//     );
+
+//     res.status(200).json({ success: true, packageLimit: updatedTotal });
+//   } catch (error) {
+//     res.status(500).json({ message: "Server Error" });
+//   }
+// });
 
     // ─── Assets ──────────────────────────────────────────────
    // Add asset (HR only)
@@ -666,29 +685,56 @@ app.get("/asset-requests/hr", verifyJWT, verifyHR, async (req, res) => {
     });
 
     app.patch("/payment-success", async (req, res) => {
-      const { sessionId } = req.body;
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      if (session.payment_status !== "paid") return res.status(400).json({ message: "Payment not completed" });
+  try {
+    const { sessionId } = req.body;
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ message: "Payment not completed" });
+    }
 
-      const { userId, packageId } = session.metadata;
-      const pkg = await packagesCollection.findOne({ _id: new ObjectId(packageId) });
+    const { userId, packageId } = session.metadata;
+    const pkg = await packagesCollection.findOne({ _id: new ObjectId(packageId) });
+    const user = await userCollection.findOne({ _id: new ObjectId(userId) });
 
-      await userCollection.updateOne(
-        { _id: new ObjectId(userId) },
-        { $set: { packageName: pkg.name, packageLimit: pkg.employeeLimit, subscription: "active", updatedAt: new Date() } }
-      );
+    if (!pkg || !user) {
+      return res.status(404).json({ message: "Package or User not found" });
+    }
 
-      await paymentsCollection.insertOne({
-        userId: new ObjectId(userId),
-        packageName: pkg.name,
-        amount: pkg.price,
-        transactionId: session.id,
-        paymentDate: new Date(),
-        status: "completed"
-      });
+    // ✅ Agre limiter sathe new limit jog kora
+    const currentLimit = Number(user.packageLimit) || 0;
+    const additionalLimit = Number(pkg.employeeLimit) || 0;
+    const newTotalLimit = currentLimit + additionalLimit;
 
-      res.json({ success: true });
+    await userCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { 
+        $set: { 
+          packageName: pkg.name, 
+          packageLimit: newTotalLimit, // Jog fall Save
+          subscription: "active", 
+          updatedAt: new Date() 
+        } 
+      }
+    );
+
+    // Payment hoistory Save
+    await paymentsCollection.insertOne({
+      userId: new ObjectId(userId),
+      email: user.email,
+      packageName: pkg.name,
+      amount: pkg.price,
+      transactionId: session.id,
+      paymentDate: new Date(),
+      status: "completed"
     });
+
+    res.json({ success: true, newLimit: newTotalLimit });
+  } catch (error) {
+    console.error("Payment Success Error:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
   app.get("/hr/stats", verifyJWT, verifyHR, async (req, res) => {
   try {
@@ -814,7 +860,7 @@ app.post('/contact', async (req, res) => {
 //  View deatil route 
 app.get('/assets/:id', async (req, res) => {
     const id = req.params.id;
-    const query = { _id: new ObjectId(id) }; // MongoDB এর ObjectId ব্যবহার করে
+    const query = { _id: new ObjectId(id) }; 
     const result = await assetsCollection.findOne(query);
     res.send(result);
 });
