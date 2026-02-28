@@ -42,6 +42,7 @@ async function run() {
     const requestsCollection = db.collection("requests");
     const assignedCollection = db.collection("assignedAssets");
     const paymentsCollection = db.collection("payments");
+    const contactCollection =  db.collection("message")
 
     // ─── Default Packages Seed ───────────────────────────────
     // const packageCount = await packagesCollection.countDocuments();
@@ -796,6 +797,26 @@ app.get('/public-stats', async (req, res) => {
     console.error("Stats API Error:", error);
     res.status(500).send({ message: "Error fetching stats" });
   }
+});
+
+// --- Contact Form API ---
+app.post('/contact', async (req, res) => {
+    const contactInfo = req.body; 
+    
+    try {
+        const result = await contactCollection.insertOne(contactInfo);
+        res.send(result);
+    } catch (error) {
+        console.error("Contact API Error:", error);
+        res.status(500).send({ message: "Internal Server Error" });
+    }
+});
+//  View deatil route 
+app.get('/assets/:id', async (req, res) => {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) }; // MongoDB এর ObjectId ব্যবহার করে
+    const result = await assetsCollection.findOne(query);
+    res.send(result);
 });
 
     // ─── Server Started Message ──────────────────────────────
