@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 3500;
 
 // Middleware
 app.use(cors({
@@ -280,42 +280,7 @@ app.patch("/users/:email", verifyJWT, async (req, res) => {
 });
 
 
-// app.patch("/users/upgrade-package", verifyJWT, verifyHR, async (req, res) => {
-//   try {
-//     const { newLimit, packageName } = req.body;
-//     const email = req.user.email;
 
-//     // --- DEBUGGING START ---
-//     const user = await userCollection.findOne({ email });
-    
-//     console.log("--- UPGRADE DEBUG ---");
-//     console.log("Current DB Limit:", user.packageLimit, "Type:", typeof user.packageLimit);
-//     console.log("Incoming New Limit:", newLimit, "Type:", typeof newLimit);
-//     // --- DEBUGGING END ---
-
-//     // ডাটাবেস আপডেট লজিক (নিরাপদ উপায়)
-//     const currentLimit = Number(user.packageLimit) || 0;
-//     const addedLimit = Number(newLimit) || 0;
-//     const updatedTotal = currentLimit + addedLimit;
-
-//     console.log("Calculated Total:", updatedTotal);
-
-//     const result = await userCollection.updateOne(
-//       { email },
-//       {
-//         $set: {
-//           packageLimit: updatedTotal, // সরাসরি যোগ করা ভ্যালু সেট করুন
-//           packageName,
-//           updatedAt: new Date(),
-//         },
-//       }
-//     );
-
-//     res.status(200).json({ success: true, packageLimit: updatedTotal });
-//   } catch (error) {
-//     res.status(500).json({ message: "Server Error" });
-//   }
-// });
 
     // ─── Assets ──────────────────────────────────────────────
    // Add asset (HR only)
